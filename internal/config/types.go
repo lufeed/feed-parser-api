@@ -6,6 +6,7 @@ type AppConfig struct {
 	Database DatabaseConfig `mapstructure:"database" json:"database" yaml:"database"`
 	Cache    CacheConfig    `mapstructure:"cache" json:"cache" yaml:"cache"`
 	Log      LogConfig      `mapstructure:"log" json:"log" yaml:"log"`
+	Auth     AuthConfig     `mapstructure:"auth" json:"auth" yaml:"auth"`
 }
 
 type ServiceConfig struct {
@@ -38,4 +39,8 @@ type CacheConfig struct {
 type LogConfig struct {
 	Level  string `mapstructure:"level" json:"level" yaml:"level"`
 	Format string `mapstructure:"format" json:"format" yaml:"format"`
+}
+
+type AuthConfig struct {
+	APIKeys []string `mapstructure:"api_keys" json:"api_keys" yaml:"api_keys"`
 }

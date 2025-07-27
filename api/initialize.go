@@ -7,6 +7,7 @@ import (
 	v1 "github.com/lufeed/feed-parser-api/api/v1"
 	"github.com/lufeed/feed-parser-api/internal/config"
 	"github.com/lufeed/feed-parser-api/internal/logger"
+	"github.com/lufeed/feed-parser-api/internal/middleware"
 	"golang.org/x/time/rate"
 	"net/http"
 )
@@ -33,7 +34,9 @@ func Initialize(cfg *config.AppConfig) error {
 	})
 
 	apiGroup := e.Group(cfg.Server.RootPath)
-	v1.SetupRoutes(apiGroup.Group("/v1"), cfg)
+	v1Group := apiGroup.Group("/v1")
+	v1Group.Use(middleware.APIKeyAuth(cfg))
+	v1.SetupRoutes(v1Group, cfg)
 
 	logger.GetSugaredLogger().Infof("Starting server on address %s...", cfg.Server.Host)
 	e.Logger.Fatal(e.Start(fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)))

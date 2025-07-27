@@ -36,8 +36,13 @@ func (p *URLParser) Exec(sourceUrl string) (models.Source, error) {
 		return models.Source{}, err
 	}
 
+	id, err := uuid.NewUUID()
+	if err != nil {
+		return models.Source{}, err
+	}
+
 	newSource := models.Source{
-		ID:          uuid.UUID{},
+		ID:          id,
 		Name:        strings.TrimSpace(html.UnescapeString(feed.Title)),
 		Description: feed.Description,
 		FeedURL:     sourceUrl,

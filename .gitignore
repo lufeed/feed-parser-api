@@ -1,0 +1,10 @@
+.idea/
+.vscode/
+
+*local*
+
+venv/
+
+*env
+
+.DS_Store

@@ -1,0 +1,229 @@
+openapi: 3.0.3
+info:
+  title: LuFeed Feed Parser API
+  description: A REST API for parsing RSS/Atom feeds and extracting source information from URLs
+  version: 1.0.0
+  contact:
+    name: LuFeed Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:7654
+    description: Local development server
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /ping:
+    get:
+      summary: Health check endpoint
+      description: Returns a simple pong response to check if the service is running
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "pong"
+                  service:
+                    type: string
+                    example: "lufeed-feed-parser-api"
+
+  api/v1/parsing/url:
+    post:
+      summary: Parse URL for feed information
+      description: Analyzes a given URL to extract feed-related information and metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/URLRequest'
+      responses:
+        '200':
+          description: Successfully parsed URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIResponse'
+        '400':
+          description: Bad request - invalid URL or request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  api/v1/parsing/source:
+    post:
+      summary: Parse source information from URL
+      description: Extracts comprehensive source information from a given URL, including metadata, feed details, and site information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/URLRequest'
+      responses:
+        '200':
+          description: Successfully parsed source information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIResponse'
+        '400':
+          description: Bad request - invalid URL or request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: API key authentication using Bearer token
+
+  schemas:
+    URLRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          format: uri
+          description: The URL to parse
+          example: "https://example.com/feed.xml"
+
+    APIResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: HTTP status code
+          example: 200
+        message:
+          type: string
+          description: Response message
+          example: "Success"
+        data:
+          oneOf:
+            - $ref: '#/components/schemas/Feed'
+            - $ref: '#/components/schemas/Source'
+          description: Response data containing parsed information
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Error message
+          example: "Invalid URL format"
+
+    Feed:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the feed
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        title:
+          type: string
+          description: Feed title
+          example: "Tech News Daily"
+        description:
+          type: string
+          description: Feed description
+          example: "Latest technology news and updates"
+        url:
+          type: string
+          format: uri
+          description: Feed URL
+          example: "https://example.com/feed.xml"
+        image_url:
+          type: string
+          format: uri
+          description: Feed image URL
+          example: "https://example.com/image.jpg"
+        published_at:
+          type: string
+          format: date-time
+          description: Publication timestamp
+          example: "2023-12-01T10:30:00Z"
+
+    Source:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the source
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          description: Source name
+          example: "Tech News Site"
+        description:
+          type: string
+          description: Source description
+          example: "A comprehensive technology news website"
+        feed_url:
+          type: string
+          format: uri
+          description: RSS/Atom feed URL
+          example: "https://example.com/feed.xml"
+        home_url:
+          type: string
+          format: uri
+          description: Homepage URL
+          example: "https://example.com"
+        image_url:
+          type: string
+          format: uri
+          description: Source image URL
+          example: "https://example.com/logo.jpg"
+        icon_url:
+          type: string
+          format: uri
+          description: Source icon URL
+          example: "https://example.com/favicon.ico"
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Parsing
+    description: URL and feed parsing operations

@@ -80,14 +80,14 @@ func (m *Manager) GetProxiedTransport() (*http.Transport, int) {
 }
 
 func (m *Manager) ReleaseProxy(id int) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	//m.mu.Lock()
+	//defer m.mu.Unlock()
 	m.occupiedMap[id] = false
 }
 
 func (m *Manager) HoldProxy(id int) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	//m.mu.Lock()
+	//defer m.mu.Unlock()
 	m.occupiedMap[id] = true
 }
 

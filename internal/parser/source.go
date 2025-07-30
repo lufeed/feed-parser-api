@@ -91,9 +91,10 @@ func (s *SourceParser) Exec(sourceURL string, sendHTML bool) ([]models.Feed, err
 			}
 			mu.Lock()
 			results = append(results, f)
+			time.Sleep(time.Duration(2) * time.Millisecond)
 			s.proxyManager.ReleaseProxy(proxyID)
 			mu.Unlock()
-			// time.Sleep(time.Duration(3) * time.Millisecond) // Not needed with concurrency
+
 		}(item)
 
 	}

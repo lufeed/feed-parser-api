@@ -43,34 +43,33 @@ func (e *Extractor) Exec() (WebsiteInformation, error) {
 		Image:       e.getImage(doc),
 		Description: e.getDescription(doc),
 		Title:       e.getTitle(doc),
+		HTML:        e.getHTML(doc),
 	}
 
 	if e.icon {
 		wsi.Icon = e.getIcon(doc)
 	}
 
-	if e.checkHead(wsi.Image) || (e.icon && e.checkHead(wsi.Icon)) {
-		parsedHomeURL, err := url.Parse(e.baseUrl)
-		if err == nil {
-			newUrl := fmt.Sprintf("%s://%s", parsedHomeURL.Scheme, parsedHomeURL.Host)
-			if newUrl != e.baseUrl {
-				e.baseUrl = newUrl
-				newDoc, err := e.getDoc()
-				if err != nil {
-					return wsi, nil
-				}
-				if wsi.Image == "" {
-					wsi.Image = e.getImage(newDoc)
-				}
-				if e.icon && wsi.Icon == "" {
-					wsi.Icon = e.getIcon(newDoc)
-				}
-				if wsi.Description == "" {
-					wsi.Description = e.getDescription(newDoc)
-				}
-				if wsi.Title == "" {
-					wsi.Title = e.getTitle(newDoc)
-				}
+	parsedHomeURL, err := url.Parse(e.baseUrl)
+	if err == nil {
+		newUrl := fmt.Sprintf("%s://%s", parsedHomeURL.Scheme, parsedHomeURL.Host)
+		if newUrl != e.baseUrl {
+			e.baseUrl = newUrl
+			newDoc, err := e.getDoc()
+			if err != nil {
+				return wsi, nil
+			}
+			if wsi.Image == "" {
+				wsi.Image = e.getImage(newDoc)
+			}
+			if e.icon && wsi.Icon == "" {
+				wsi.Icon = e.getIcon(newDoc)
+			}
+			if wsi.Description == "" {
+				wsi.Description = e.getDescription(newDoc)
+			}
+			if wsi.Title == "" {
+				wsi.Title = e.getTitle(newDoc)
 			}
 		}
 	}

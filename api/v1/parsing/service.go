@@ -5,7 +5,6 @@ import (
 	"github.com/lufeed/feed-parser-api/internal/parser"
 	"github.com/lufeed/feed-parser-api/internal/proxy"
 	"github.com/lufeed/feed-parser-api/internal/types"
-	"github.com/mmcdole/gofeed"
 	"net/http"
 )
 
@@ -25,8 +24,6 @@ func newService(proxyManager *proxy.Manager) service {
 }
 
 func (s serviceImpl) parseUrl(ctx context.Context, inputUrl string, sendHTML bool) (types.APIResponse, error) {
-	fp := gofeed.NewParser()
-	fp.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
 	urlParser := parser.NewURLParser(ctx, s.proxyManager)
 
 	source, err := urlParser.Exec(inputUrl, sendHTML)

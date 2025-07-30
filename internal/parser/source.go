@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/lufeed/feed-parser-api/internal/proxy"
 	"math"
 	"math/rand"
 	"net/http"
@@ -18,29 +19,30 @@ import (
 )
 
 type SourceParser struct {
-	ctx    context.Context
-	fp     *gofeed.Parser
-	client *http.Client
+	ctx          context.Context
+	proxyManager *proxy.Manager
 }
 
 var (
 	maxRetries = 3
 )
 
-func NewSourceParser(ctx context.Context, fp *gofeed.Parser, client *http.Client) *SourceParser {
+func NewSourceParser(ctx context.Context, pm *proxy.Manager) *SourceParser {
 	return &SourceParser{
-		ctx:    ctx,
-		fp:     fp,
-		client: client,
+		ctx:          ctx,
+		proxyManager: pm,
 	}
 }
 
-func (s *SourceParser) Exec(sourceURL string) ([]models.Feed, error) {
+func (s *SourceParser) Exec(sourceURL string, sendHTML bool) ([]models.Feed, error) {
 	var feed *gofeed.Feed
 	var err error
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		feed, err = s.fp.ParseURL(sourceURL)
+		fp := gofeed.NewParser()
+		fp.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
+		fp.Client = s.proxyManager.GetProxiedClient()
+		feed, err = fp.ParseURL(sourceURL)
 		if err == nil {
 			continue
 		}
@@ -63,7 +65,8 @@ func (s *SourceParser) Exec(sourceURL string) ([]models.Feed, error) {
 
 	var results []models.Feed
 	for _, item := range feed.Items {
-		f, err := s.parseFeedItem(item, feed.Link)
+		cl := s.proxyManager.GetProxiedClient()
+		f, err := s.parseFeedItem(cl, item, feed.Link, sendHTML)
 		if err != nil {
 			continue
 		}
@@ -74,9 +77,9 @@ func (s *SourceParser) Exec(sourceURL string) ([]models.Feed, error) {
 	return results, nil
 }
 
-func (s *SourceParser) parseFeedItem(item *gofeed.Item, host string) (models.Feed, error) {
+func (s *SourceParser) parseFeedItem(cl *http.Client, item *gofeed.Item, host string, sendHTML bool) (models.Feed, error) {
 	itemLink := strings.Split(item.Link, "?")[0]
-	opengraphExtractor := opengraph.NewExtractor(s.client, itemLink, host, false)
+	opengraphExtractor := opengraph.NewExtractor(cl, itemLink, host, false)
 	wsi, err := opengraphExtractor.Exec()
 	if err != nil {
 		return models.Feed{}, err
@@ -126,12 +129,18 @@ func (s *SourceParser) parseFeedItem(item *gofeed.Item, host string) (models.Fee
 		return models.Feed{}, err
 	}
 
-	return models.Feed{
+	feed := models.Feed{
 		ID:          feedID,
 		Title:       item.Title,
 		Description: wsi.Description,
 		URL:         itemLink,
 		ImageURL:    imageURL,
 		PublishedAt: *published,
-	}, nil
+	}
+
+	if sendHTML {
+		feed.HTML = &wsi.HTML
+	}
+
+	return feed, nil
 }

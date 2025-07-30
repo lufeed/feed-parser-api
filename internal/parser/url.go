@@ -7,6 +7,7 @@ import (
 	"github.com/lufeed/feed-parser-api/internal/logger"
 	"github.com/lufeed/feed-parser-api/internal/models"
 	"github.com/lufeed/feed-parser-api/internal/opengraph"
+	"github.com/lufeed/feed-parser-api/internal/proxy"
 	"github.com/mmcdole/gofeed"
 	"go.uber.org/zap"
 	"html"
@@ -16,21 +17,24 @@ import (
 )
 
 type URLParser struct {
-	ctx    context.Context
-	fp     *gofeed.Parser
-	client *http.Client
+	ctx          context.Context
+	proxyManager *proxy.Manager
 }
 
-func NewURLParser(ctx context.Context, fp *gofeed.Parser, client *http.Client) *URLParser {
+func NewURLParser(ctx context.Context, pm *proxy.Manager) *URLParser {
 	return &URLParser{
-		ctx:    ctx,
-		fp:     fp,
-		client: client,
+		ctx:          ctx,
+		proxyManager: pm,
 	}
 }
 
-func (p *URLParser) Exec(sourceUrl string) (models.Source, error) {
-	feed, err := p.fp.ParseURL(sourceUrl)
+func (p *URLParser) Exec(sourceUrl string, sendHTML bool) (models.Source, error) {
+	fp := gofeed.NewParser()
+	cl := p.proxyManager.GetProxiedClient()
+	fp.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
+	fp.Client = cl
+
+	feed, err := fp.ParseURL(sourceUrl)
 	if err != nil {
 		logger.GetSugaredLogger().Warnf("Cannot parse URL: %s error: %s", sourceUrl, err.Error())
 		return models.Source{}, err
@@ -49,7 +53,7 @@ func (p *URLParser) Exec(sourceUrl string) (models.Source, error) {
 		HomeURL:     strings.Split(feed.Link, "?")[0],
 	}
 
-	opengraphExtractor := opengraph.NewExtractor(p.client, newSource.HomeURL, newSource.HomeURL, true)
+	opengraphExtractor := opengraph.NewExtractor(cl, newSource.HomeURL, newSource.HomeURL, true)
 	wsi, err := opengraphExtractor.Exec()
 	if wsi.Description != "" {
 		newSource.Description = html.UnescapeString(wsi.Description)
@@ -60,14 +64,18 @@ func (p *URLParser) Exec(sourceUrl string) (models.Source, error) {
 	if newSource.ImageURL == "" && feed.Image != nil && feed.Image.URL != "" {
 		newSource.ImageURL = feed.Image.URL
 	}
-	newSource.ImageURL = p.getImageUrl(newSource.HomeURL, newSource.ImageURL, "covers")
-	newSource.IconURL = p.getImageUrl(newSource.HomeURL, wsi.Icon, "icons")
+	newSource.ImageURL = p.getImageUrl(cl, newSource.HomeURL, newSource.ImageURL, "covers")
+	newSource.IconURL = p.getImageUrl(cl, newSource.HomeURL, wsi.Icon, "icons")
 
 	if newSource.Name == "" {
 		newSource.Name = strings.TrimSpace(wsi.Title)
 		if newSource.Name == "" {
 			newSource.Name = "Unknown Title"
 		}
+	}
+
+	if sendHTML {
+		newSource.HTML = &wsi.HTML
 	}
 
 	if newSource.ImageURL == "" {
@@ -80,7 +88,7 @@ func (p *URLParser) Exec(sourceUrl string) (models.Source, error) {
 	return newSource, nil
 }
 
-func (p *URLParser) getImageUrl(homeUrl, originalURL string, imageType string) string {
+func (p *URLParser) getImageUrl(cl *http.Client, homeUrl, originalURL string, imageType string) string {
 	imageURL := ""
 	if originalURL != "" {
 		parsedURL, err := url.Parse(originalURL)
@@ -102,7 +110,7 @@ func (p *URLParser) getImageUrl(homeUrl, originalURL string, imageType string) s
 		}
 
 		// Test image URL before downloading
-		headResp, err := p.client.Head(imageURL)
+		headResp, err := cl.Head(imageURL)
 		if err != nil {
 			logger.GetSugaredLogger().With(zap.String("url", imageURL)).Errorf("Error checking image URL: %s", err.Error())
 			imageURL = ""

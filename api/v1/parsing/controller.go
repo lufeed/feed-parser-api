@@ -29,7 +29,7 @@ func (c controllerImpl) parseUrl(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, err.Error())
 	}
 
-	data, err := c.service.parseUrl(ctx.Request().Context(), body.URL)
+	data, err := c.service.parseUrl(ctx.Request().Context(), body.URL, body.SendHTML)
 	if err != nil {
 		return echo.NewHTTPError(data.StatusCode(), err.Error())
 	}
@@ -44,7 +44,7 @@ func (c controllerImpl) parseSource(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, err.Error())
 	}
 
-	data, err := c.service.parseSource(ctx.Request().Context(), body.URL)
+	data, err := c.service.parseSource(ctx.Request().Context(), body.URL, body.SendHTML)
 	if err != nil {
 		return echo.NewHTTPError(data.StatusCode(), err.Error())
 	}

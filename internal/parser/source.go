@@ -2,6 +2,7 @@ package parser
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
@@ -9,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/lufeed/feed-parser-api/internal/cache"
 
 	"github.com/google/uuid"
 	"github.com/lufeed/feed-parser-api/internal/proxy"
@@ -78,25 +81,35 @@ func (s *SourceParser) Exec(sourceURL string, sendHTML bool) ([]models.Feed, err
 	for _, item := range feed.Items {
 		sem <- struct{}{} // acquire slot
 		wg.Add(1)
-
 		go func(i *gofeed.Item) {
 			defer func() {
 				<-sem // release slot
 				wg.Done()
 			}()
-			cl, proxyID := s.proxyManager.GetProxiedClient()
-			f, err := s.parseFeedItem(cl, i, feed.Link, sendHTML)
-			if err != nil {
-				return
+			var f models.Feed
+
+			cacheData, err := cache.GetCache(i.Link)
+			if err == nil && cacheData != "" {
+				err = json.Unmarshal([]byte(cacheData), &f)
+				if err != nil {
+					// fallback to parsing if unmarshal fails
+					cl, proxyID := s.proxyManager.GetProxiedClient()
+					f, err = s.parseFeedItem(cl, i, feed.Link, sendHTML)
+					s.proxyManager.ReleaseProxy(proxyID)
+					b, _ := json.Marshal(f)
+					cache.SetCache(i.Link, b, time.Hour*24)
+				}
+			} else {
+				cl, proxyID := s.proxyManager.GetProxiedClient()
+				f, err = s.parseFeedItem(cl, i, feed.Link, sendHTML)
+				s.proxyManager.ReleaseProxy(proxyID)
+				b, _ := json.Marshal(f)
+				cache.SetCache(i.Link, b, time.Hour*24)
 			}
 			mu.Lock()
 			results = append(results, f)
-			time.Sleep(time.Duration(3) * time.Millisecond)
-			s.proxyManager.ReleaseProxy(proxyID)
 			mu.Unlock()
-
 		}(item)
-
 	}
 	wg.Wait()
 

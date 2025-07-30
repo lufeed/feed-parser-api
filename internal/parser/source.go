@@ -3,14 +3,17 @@ package parser
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/lufeed/feed-parser-api/internal/proxy"
 	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/lufeed/feed-parser-api/internal/proxy"
+
+	"sync"
 
 	"github.com/lufeed/feed-parser-api/internal/logger"
 	"github.com/lufeed/feed-parser-api/internal/models"
@@ -41,14 +44,16 @@ func (s *SourceParser) Exec(sourceURL string, sendHTML bool) ([]models.Feed, err
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		fp := gofeed.NewParser()
 		fp.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
-		fp.Client = s.proxyManager.GetProxiedClient()
+		cl, proxyID := s.proxyManager.GetProxiedClient()
+		fp.Client = cl
 		feed, err = fp.ParseURL(sourceURL)
 		if err == nil {
-			continue
+			break
 		}
 		if !strings.Contains(err.Error(), "429") {
 			return nil, err
 		}
+		s.proxyManager.ReleaseProxy(proxyID)
 
 		backoffTime := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
 		jitter := time.Duration(rand.Int63n(int64(backoffTime) / 2))
@@ -64,15 +69,35 @@ func (s *SourceParser) Exec(sourceURL string, sendHTML bool) ([]models.Feed, err
 	}
 
 	var results []models.Feed
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	proxyCount := s.proxyManager.ProxyCount()
+	sem := make(chan struct{}, proxyCount)
+
 	for _, item := range feed.Items {
-		cl := s.proxyManager.GetProxiedClient()
-		f, err := s.parseFeedItem(cl, item, feed.Link, sendHTML)
-		if err != nil {
-			continue
-		}
-		results = append(results, f)
-		time.Sleep(time.Duration(3) * time.Millisecond)
+		sem <- struct{}{} // acquire slot
+		wg.Add(1)
+
+		go func(i *gofeed.Item) {
+			defer func() {
+				<-sem // release slot
+				wg.Done()
+			}()
+			cl, proxyID := s.proxyManager.GetProxiedClient()
+			f, err := s.parseFeedItem(cl, i, feed.Link, sendHTML)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			results = append(results, f)
+			s.proxyManager.ReleaseProxy(proxyID)
+			mu.Unlock()
+			// time.Sleep(time.Duration(3) * time.Millisecond) // Not needed with concurrency
+		}(item)
+
 	}
+	wg.Wait()
 
 	return results, nil
 }

@@ -2,27 +2,32 @@ package proxy
 
 import (
 	"fmt"
-	"github.com/lufeed/feed-parser-api/internal/config"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
 
+	"github.com/lufeed/feed-parser-api/internal/config"
+
 	"github.com/lufeed/feed-parser-api/internal/logger"
 )
 
 type Manager struct {
 	proxies     []config.Proxy
+	occupiedMap map[int]bool
 	mu          sync.RWMutex
-	transport   *http.Transport
 	baseTimeout time.Duration
 }
 
 func NewManager(cfg *config.AppConfig) *Manager {
+	occupiedMap := make(map[int]bool)
+	for i := range cfg.Proxy.Proxies {
+		occupiedMap[i] = false
+	}
 	return &Manager{
 		proxies:     cfg.Proxy.Proxies,
+		occupiedMap: occupiedMap,
 		baseTimeout: 60 * time.Second,
 	}
 }
@@ -48,6 +53,7 @@ func (m *Manager) GetProxiedTransport() *http.Transport {
 		logger.GetSugaredLogger().Warn("No working proxies available, using direct connection")
 		return m.getBaseTransport()
 	}
+	m.occupiedMap[proxy.ID] = true
 
 	proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%s@%s:%s",
 		proxy.Username, proxy.Password, proxy.Address, proxy.Port))
@@ -64,9 +70,25 @@ func (m *Manager) GetProxiedTransport() *http.Transport {
 	return transport
 }
 
+func (m *Manager) ReleaseProxy(id int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.occupiedMap[id] = false
+}
+
+func (m *Manager) ProxyCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.proxies)
+}
+
 func (m *Manager) getNextWorkingProxy() *config.Proxy {
-	randomIdx := rand.Intn(len(m.proxies))
-	return &m.proxies[randomIdx]
+	for i := 0; i < len(m.proxies); i++ {
+		if !m.occupiedMap[i] {
+			return &m.proxies[i]
+		}
+	}
+	return nil
 }
 
 func (m *Manager) getBaseTransport() *http.Transport {

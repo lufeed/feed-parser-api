@@ -51,9 +51,6 @@ type ProxyConfig struct {
 }
 
 type Proxy struct {
-	ID       int    `mapstructure:"id" json:"id" yaml:"id"`
-	Address  string `mapstructure:"address" json:"address" yaml:"address"`
-	Port     string `mapstructure:"port" json:"port" yaml:"port"`
-	Username string `mapstructure:"username" json:"username" yaml:"username"`
-	Password string `mapstructure:"password" json:"password" yaml:"password"`
+	ID  int    `mapstructure:"id" json:"id" yaml:"id"`
+	URL string `mapstructure:"url" json:"url" yaml:"url"`
 }

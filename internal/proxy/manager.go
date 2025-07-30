@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -65,8 +64,7 @@ func (m *Manager) GetProxiedTransport() (*http.Transport, int) {
 	}
 	m.HoldProxy(proxy.ID)
 
-	proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%s@%s:%s",
-		proxy.Username, proxy.Password, proxy.Address, proxy.Port))
+	proxyURL, err := url.Parse(proxy.URL)
 	if err != nil {
 		logger.GetSugaredLogger().Errorf("Failed to parse proxy URL: %v", err)
 		return m.getBaseTransport(), 0
@@ -75,7 +73,7 @@ func (m *Manager) GetProxiedTransport() (*http.Transport, int) {
 	transport := m.getBaseTransport()
 	transport.Proxy = http.ProxyURL(proxyURL)
 
-	logger.GetSugaredLogger().Infof("Using proxy: %s:%s", proxy.Address, proxy.Port)
+	logger.GetSugaredLogger().Infof("Using proxy: %d", proxy.ID)
 
 	return transport, proxy.ID
 }

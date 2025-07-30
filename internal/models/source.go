@@ -10,4 +10,5 @@ type Source struct {
 	HomeURL     string    `json:"home_url"`
 	ImageURL    string    `json:"image_url"`
 	IconURL     string    `json:"icon_url"`
+	HTML        *string   `json:"html,omitempty"`
 }

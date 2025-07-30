@@ -2,14 +2,21 @@ package parser
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/lufeed/feed-parser-api/internal/cache"
+
+	"github.com/google/uuid"
+	"github.com/lufeed/feed-parser-api/internal/proxy"
+
+	"sync"
 
 	"github.com/lufeed/feed-parser-api/internal/logger"
 	"github.com/lufeed/feed-parser-api/internal/models"
@@ -18,35 +25,38 @@ import (
 )
 
 type SourceParser struct {
-	ctx    context.Context
-	fp     *gofeed.Parser
-	client *http.Client
+	ctx          context.Context
+	proxyManager *proxy.Manager
 }
 
 var (
 	maxRetries = 3
 )
 
-func NewSourceParser(ctx context.Context, fp *gofeed.Parser, client *http.Client) *SourceParser {
+func NewSourceParser(ctx context.Context, pm *proxy.Manager) *SourceParser {
 	return &SourceParser{
-		ctx:    ctx,
-		fp:     fp,
-		client: client,
+		ctx:          ctx,
+		proxyManager: pm,
 	}
 }
 
-func (s *SourceParser) Exec(sourceURL string) ([]models.Feed, error) {
+func (s *SourceParser) Exec(sourceURL string, sendHTML bool) ([]models.Feed, error) {
 	var feed *gofeed.Feed
 	var err error
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		feed, err = s.fp.ParseURL(sourceURL)
+		fp := gofeed.NewParser()
+		fp.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
+		cl, proxyID := s.proxyManager.GetProxiedClient()
+		fp.Client = cl
+		feed, err = fp.ParseURL(sourceURL)
 		if err == nil {
-			continue
+			break
 		}
 		if !strings.Contains(err.Error(), "429") {
 			return nil, err
 		}
+		s.proxyManager.ReleaseProxy(proxyID)
 
 		backoffTime := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
 		jitter := time.Duration(rand.Int63n(int64(backoffTime) / 2))
@@ -62,21 +72,53 @@ func (s *SourceParser) Exec(sourceURL string) ([]models.Feed, error) {
 	}
 
 	var results []models.Feed
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	proxyCount := s.proxyManager.ProxyCount()
+	sem := make(chan struct{}, proxyCount)
+
 	for _, item := range feed.Items {
-		f, err := s.parseFeedItem(item, feed.Link)
-		if err != nil {
-			continue
-		}
-		results = append(results, f)
-		time.Sleep(time.Duration(3) * time.Millisecond)
+		sem <- struct{}{} // acquire slot
+		wg.Add(1)
+		go func(i *gofeed.Item) {
+			defer func() {
+				<-sem // release slot
+				wg.Done()
+			}()
+			var f models.Feed
+
+			cacheData, err := cache.GetCache(i.Link)
+			if err == nil && cacheData != "" {
+				err = json.Unmarshal([]byte(cacheData), &f)
+				if err != nil {
+					// fallback to parsing if unmarshal fails
+					cl, proxyID := s.proxyManager.GetProxiedClient()
+					f, err = s.parseFeedItem(cl, i, feed.Link, sendHTML)
+					s.proxyManager.ReleaseProxy(proxyID)
+					b, _ := json.Marshal(f)
+					cache.SetCache(i.Link, b, time.Hour*24)
+				}
+			} else {
+				cl, proxyID := s.proxyManager.GetProxiedClient()
+				f, err = s.parseFeedItem(cl, i, feed.Link, sendHTML)
+				s.proxyManager.ReleaseProxy(proxyID)
+				b, _ := json.Marshal(f)
+				cache.SetCache(i.Link, b, time.Hour*24)
+			}
+			mu.Lock()
+			results = append(results, f)
+			mu.Unlock()
+		}(item)
 	}
+	wg.Wait()
 
 	return results, nil
 }
 
-func (s *SourceParser) parseFeedItem(item *gofeed.Item, host string) (models.Feed, error) {
+func (s *SourceParser) parseFeedItem(cl *http.Client, item *gofeed.Item, host string, sendHTML bool) (models.Feed, error) {
 	itemLink := strings.Split(item.Link, "?")[0]
-	opengraphExtractor := opengraph.NewExtractor(s.client, itemLink, host, false)
+	opengraphExtractor := opengraph.NewExtractor(cl, itemLink, host, false)
 	wsi, err := opengraphExtractor.Exec()
 	if err != nil {
 		return models.Feed{}, err
@@ -126,12 +168,18 @@ func (s *SourceParser) parseFeedItem(item *gofeed.Item, host string) (models.Fee
 		return models.Feed{}, err
 	}
 
-	return models.Feed{
+	feed := models.Feed{
 		ID:          feedID,
 		Title:       item.Title,
 		Description: wsi.Description,
 		URL:         itemLink,
 		ImageURL:    imageURL,
 		PublishedAt: *published,
-	}, nil
+	}
+
+	if sendHTML {
+		feed.HTML = &wsi.HTML
+	}
+
+	return feed, nil
 }

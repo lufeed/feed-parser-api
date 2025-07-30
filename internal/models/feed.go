@@ -11,5 +11,6 @@ type Feed struct {
 	Description string    `json:"description"`
 	URL         string    `json:"url"`
 	ImageURL    string    `json:"image_url"`
+	HTML        *string   `json:"html,omitempty"`
 	PublishedAt time.Time `json:"published_at"`
 }

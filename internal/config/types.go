@@ -7,6 +7,7 @@ type AppConfig struct {
 	Cache    CacheConfig    `mapstructure:"cache" json:"cache" yaml:"cache"`
 	Log      LogConfig      `mapstructure:"log" json:"log" yaml:"log"`
 	Auth     AuthConfig     `mapstructure:"auth" json:"auth" yaml:"auth"`
+	Proxy    ProxyConfig    `mapstructure:"proxy" json:"proxy" yaml:"proxy"`
 }
 
 type ServiceConfig struct {
@@ -43,4 +44,13 @@ type LogConfig struct {
 
 type AuthConfig struct {
 	APIKeys []string `mapstructure:"api_keys" json:"api_keys" yaml:"api_keys"`
+}
+
+type ProxyConfig struct {
+	Proxies []Proxy `mapstructure:"proxies" json:"proxies" yaml:"proxies"`
+}
+
+type Proxy struct {
+	ID  int    `mapstructure:"id" json:"id" yaml:"id"`
+	URL string `mapstructure:"url" json:"url" yaml:"url"`
 }

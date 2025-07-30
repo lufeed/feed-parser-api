@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -98,6 +99,8 @@ func (m *Manager) ProxyCount() int {
 }
 
 func (m *Manager) getNextWorkingProxy() *config.Proxy {
+	pList := m.proxies
+	rand.Shuffle(len(pList), func(i, j int) { pList[i], pList[j] = pList[j], pList[i] })
 	for i := 0; i < len(m.proxies); i++ {
 		if !m.occupiedMap[i] {
 			return &m.proxies[i]

@@ -13,6 +13,11 @@ import (
 	"github.com/lufeed/feed-parser-api/internal/logger"
 )
 
+var (
+	once    sync.Once
+	manager *Manager
+)
+
 type Manager struct {
 	proxies     []config.Proxy
 	occupiedMap map[int]bool
@@ -21,45 +26,49 @@ type Manager struct {
 }
 
 func NewManager(cfg *config.AppConfig) *Manager {
-	occupiedMap := make(map[int]bool)
-	for i := range cfg.Proxy.Proxies {
-		occupiedMap[i] = false
-	}
-	return &Manager{
-		proxies:     cfg.Proxy.Proxies,
-		occupiedMap: occupiedMap,
-		baseTimeout: 60 * time.Second,
-	}
+	once.Do(func() {
+		occupiedMap := make(map[int]bool)
+		for _, p := range cfg.Proxy.Proxies {
+			occupiedMap[p.ID] = false
+		}
+		manager = &Manager{
+			proxies:     cfg.Proxy.Proxies,
+			occupiedMap: occupiedMap,
+			baseTimeout: 60 * time.Second,
+		}
+	})
+	return manager
 }
 
-func (m *Manager) GetProxiedClient() *http.Client {
+func (m *Manager) GetProxiedClient() (*http.Client, int) {
+	transport, id := m.GetProxiedTransport()
 	return &http.Client{
 		Timeout:   m.baseTimeout,
-		Transport: m.GetProxiedTransport(),
-	}
+		Transport: transport,
+	}, id
 }
 
-func (m *Manager) GetProxiedTransport() *http.Transport {
+func (m *Manager) GetProxiedTransport() (*http.Transport, int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if len(m.proxies) == 0 {
 		logger.GetSugaredLogger().Warn("No proxies available, using direct connection")
-		return m.getBaseTransport()
+		return m.getBaseTransport(), 0
 	}
 
 	proxy := m.getNextWorkingProxy()
 	if proxy == nil {
 		logger.GetSugaredLogger().Warn("No working proxies available, using direct connection")
-		return m.getBaseTransport()
+		return m.getBaseTransport(), 0
 	}
-	m.occupiedMap[proxy.ID] = true
+	m.HoldProxy(proxy.ID)
 
 	proxyURL, err := url.Parse(fmt.Sprintf("http://%s:%s@%s:%s",
 		proxy.Username, proxy.Password, proxy.Address, proxy.Port))
 	if err != nil {
 		logger.GetSugaredLogger().Errorf("Failed to parse proxy URL: %v", err)
-		return m.getBaseTransport()
+		return m.getBaseTransport(), 0
 	}
 
 	transport := m.getBaseTransport()
@@ -67,7 +76,7 @@ func (m *Manager) GetProxiedTransport() *http.Transport {
 
 	logger.GetSugaredLogger().Infof("Using proxy: %s:%s", proxy.Address, proxy.Port)
 
-	return transport
+	return transport, proxy.ID
 }
 
 func (m *Manager) ReleaseProxy(id int) {
@@ -76,10 +85,16 @@ func (m *Manager) ReleaseProxy(id int) {
 	m.occupiedMap[id] = false
 }
 
+func (m *Manager) HoldProxy(id int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.occupiedMap[id] = true
+}
+
 func (m *Manager) ProxyCount() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return len(m.proxies)
+	return max(len(m.proxies), 1)
 }
 
 func (m *Manager) getNextWorkingProxy() *config.Proxy {

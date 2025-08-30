@@ -87,24 +87,35 @@ func (s *SourceParser) Exec(sourceURL string, sendHTML bool) ([]models.Feed, err
 				wg.Done()
 			}()
 			var f models.Feed
-
-			cacheData, err := cache.GetCache(i.Link)
-			if err == nil && cacheData != "" {
+			var err error
+			cacheData, cacheErr := cache.GetCache(i.Link)
+			if cacheErr == nil && cacheData != "" {
 				err = json.Unmarshal([]byte(cacheData), &f)
-				if err != nil {
-					// fallback to parsing if unmarshal fails
+			}
+			if err != nil || cacheErr != nil || cacheData == "" {
+				maxItemRetries := 2
+				for attempt := 0; attempt <= maxItemRetries; attempt++ {
 					cl, proxyID := s.proxyManager.GetProxiedClient()
 					f, err = s.parseFeedItem(cl, i, feed.Link, sendHTML)
 					s.proxyManager.ReleaseProxy(proxyID)
+					if err == nil {
+						b, _ := json.Marshal(f)
+						cache.SetCache(i.Link, b, time.Hour*24)
+						break
+					}
+					if !isTransientError(err) {
+						break
+					}
+					backoffTime := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
+					jitter := time.Duration(rand.Int63n(int64(backoffTime) / 2))
+					retryAfter := backoffTime + jitter
+					logger.GetSugaredLogger().Warnf("parseFeedItem transient error for %s (attempt %d/%d), retrying after %v: %v", i.Link, attempt+1, maxItemRetries+1, retryAfter, err)
+					time.Sleep(retryAfter)
+				}
+				if err == nil {
 					b, _ := json.Marshal(f)
 					cache.SetCache(i.Link, b, time.Hour*24)
 				}
-			} else {
-				cl, proxyID := s.proxyManager.GetProxiedClient()
-				f, err = s.parseFeedItem(cl, i, feed.Link, sendHTML)
-				s.proxyManager.ReleaseProxy(proxyID)
-				b, _ := json.Marshal(f)
-				cache.SetCache(i.Link, b, time.Hour*24)
 			}
 			mu.Lock()
 			results = append(results, f)
@@ -182,4 +193,19 @@ func (s *SourceParser) parseFeedItem(cl *http.Client, item *gofeed.Item, host st
 	}
 
 	return feed, nil
+}
+
+// Helper to detect transient errors (EOF, timeouts, etc.)
+func isTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	if strings.Contains(errStr, "EOF") ||
+		strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "Client.Timeout") ||
+		strings.Contains(errStr, "context deadline exceeded") {
+		return true
+	}
+	return false
 }

@@ -2,10 +2,11 @@ package parsing
 
 import (
 	"context"
+	"net/http"
+
 	"github.com/lufeed/feed-parser-api/internal/parser"
 	"github.com/lufeed/feed-parser-api/internal/proxy"
 	"github.com/lufeed/feed-parser-api/internal/types"
-	"net/http"
 )
 
 type service interface {
@@ -26,7 +27,7 @@ func newService(proxyManager *proxy.Manager) service {
 func (s serviceImpl) parseUrl(ctx context.Context, inputUrl string, sendHTML bool) (types.APIResponse, error) {
 	urlParser := parser.NewURLParser(ctx, s.proxyManager)
 
-	source, err := urlParser.Exec(inputUrl, sendHTML)
+	source, err := urlParser.Exec(inputUrl, sendHTML, nil)
 	if err != nil {
 		return types.APIResponse{
 			Code: http.StatusBadRequest,
@@ -43,7 +44,7 @@ func (s serviceImpl) parseUrl(ctx context.Context, inputUrl string, sendHTML boo
 func (s serviceImpl) parseSource(ctx context.Context, inputUrl string, sendHTML bool) (types.APIResponse, error) {
 	sourceParser := parser.NewSourceParser(ctx, s.proxyManager)
 
-	feeds, err := sourceParser.Exec(inputUrl, sendHTML)
+	feeds, err := sourceParser.Exec(inputUrl, sendHTML, nil)
 	if err != nil {
 		return types.APIResponse{
 			Code: http.StatusInternalServerError,

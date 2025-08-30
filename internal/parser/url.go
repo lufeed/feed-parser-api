@@ -3,6 +3,11 @@ package parser
 import (
 	"context"
 	"fmt"
+	"html"
+	"net/http"
+	"net/url"
+	"strings"
+
 	"github.com/google/uuid"
 	"github.com/lufeed/feed-parser-api/internal/logger"
 	"github.com/lufeed/feed-parser-api/internal/models"
@@ -10,10 +15,6 @@ import (
 	"github.com/lufeed/feed-parser-api/internal/proxy"
 	"github.com/mmcdole/gofeed"
 	"go.uber.org/zap"
-	"html"
-	"net/http"
-	"net/url"
-	"strings"
 )
 
 type URLParser struct {
@@ -28,7 +29,11 @@ func NewURLParser(ctx context.Context, pm *proxy.Manager) *URLParser {
 	}
 }
 
-func (p *URLParser) Exec(sourceUrl string, sendHTML bool) (models.Source, error) {
+// SourceHandler is a callback for a parsed source
+// If nil, no callback is invoked (API mode)
+type SourceHandler func(source models.Source)
+
+func (p *URLParser) Exec(sourceUrl string, sendHTML bool, onSource SourceHandler) (models.Source, error) {
 	fp := gofeed.NewParser()
 	cl, proxyID := p.proxyManager.GetProxiedClient()
 	fp.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
@@ -85,6 +90,10 @@ func (p *URLParser) Exec(sourceUrl string, sendHTML bool) (models.Source, error)
 	}
 	if newSource.IconURL == "" {
 		newSource.IconURL = "https://s3.eu-central-1.amazonaws.com/lufeed/sources/icons/lf-icon.png"
+	}
+
+	if onSource != nil {
+		onSource(newSource)
 	}
 
 	return newSource, nil

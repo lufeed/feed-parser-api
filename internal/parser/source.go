@@ -40,7 +40,11 @@ func NewSourceParser(ctx context.Context, pm *proxy.Manager) *SourceParser {
 	}
 }
 
-func (s *SourceParser) Exec(sourceURL string, sendHTML bool) ([]models.Feed, error) {
+// FeedItemHandler is a callback for each parsed feed item
+// If nil, no callback is invoked (API mode)
+type FeedItemHandler func(item models.Feed)
+
+func (s *SourceParser) Exec(sourceURL string, sendHTML bool, onItem FeedItemHandler) ([]models.Feed, error) {
 	var feed *gofeed.Feed
 	var err error
 
@@ -110,6 +114,9 @@ func (s *SourceParser) Exec(sourceURL string, sendHTML bool) ([]models.Feed, err
 				s.proxyManager.ReleaseProxy(proxyID)
 				b, _ := json.Marshal(f)
 				cache.SetCache(i.Link, b, time.Hour*24)
+			}
+			if onItem != nil {
+				onItem(f)
 			}
 			mu.Lock()
 			results = append(results, f)

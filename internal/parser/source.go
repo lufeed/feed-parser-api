@@ -78,7 +78,12 @@ func (s *SourceParser) Exec(sourceURL string, sendHTML bool) ([]models.Feed, err
 	proxyCount := s.proxyManager.ProxyCount()
 	sem := make(chan struct{}, proxyCount)
 
-	for _, item := range feed.Items {
+	maxItems := 20
+	itemCount := len(feed.Items)
+	if itemCount > maxItems {
+		itemCount = maxItems
+	}
+	for _, item := range feed.Items[:itemCount] {
 		sem <- struct{}{} // acquire slot
 		wg.Add(1)
 		go func(i *gofeed.Item) {

@@ -39,15 +39,18 @@ func main() {
 }
 
 type parseSourceRequest struct {
-	URL       string `json:"url"`
-	SendHTML  bool   `json:"send_html"`
-	RequestID string `json:"request_id"`
+	URL      string `json:"url"`
+	SendHTML bool   `json:"send_html"`
+	FeedID   string `json:"feed_id"`
+	FeedName string `json:"feed_name"`
+	UserID   string `json:"user_id"`
 }
 
 type parseURLRequest struct {
+	RequestID string `json:"request_id"`
 	URL       string `json:"url"`
 	SendHTML  bool   `json:"send_html"`
-	RequestID string `json:"request_id"`
+	UserID    string `json:"user_id"`
 }
 
 func listenSourceRequests(ctx context.Context, pm *proxy.Manager) {
@@ -60,6 +63,9 @@ func listenSourceRequests(ctx context.Context, pm *proxy.Manager) {
 		}
 		sp := parser.NewSourceParser(ctx, pm)
 		sp.Exec(req.URL, req.SendHTML, func(item models.Feed) {
+			item.FeedID = req.FeedID
+			item.FeedName = req.FeedName
+			item.UserID = req.UserID
 			b, _ := json.Marshal(item)
 			cache.Publish("parse_source_results", b)
 		})
@@ -78,6 +84,8 @@ func listenURLRequests(ctx context.Context, pm *proxy.Manager) {
 		}
 		up := parser.NewURLParser(ctx, pm)
 		up.Exec(req.URL, req.SendHTML, func(source models.Source) {
+			source.UserID = req.UserID
+			source.RequestID = req.RequestID
 			b, _ := json.Marshal(source)
 			cache.Publish("parse_url_results", b)
 		})

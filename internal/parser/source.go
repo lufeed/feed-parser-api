@@ -47,6 +47,7 @@ type FeedItemHandler func(item models.Feed)
 func (s *SourceParser) Exec(sourceURL string, sendHTML bool, onItem FeedItemHandler) ([]models.Feed, error) {
 	var feed *gofeed.Feed
 	var err error
+	logger.GetSugaredLogger().Infof("Parsing feed %s", sourceURL)
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		fp := gofeed.NewParser()

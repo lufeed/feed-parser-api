@@ -39,6 +39,8 @@ func (p *URLParser) Exec(sourceUrl string, sendHTML bool, onSource SourceHandler
 	fp.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
 	fp.Client = cl
 
+	logger.GetSugaredLogger().Infof("Parsing url %s", sourceUrl)
+
 	feed, err := fp.ParseURL(sourceUrl)
 	if err != nil {
 		logger.GetSugaredLogger().Warnf("Cannot parse URL: %s error: %s", sourceUrl, err.Error())

@@ -171,18 +171,18 @@ func (e *Extractor) getDoc() (*html.Node, error) {
         }
 
         // Not OK status
-        if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries-1 {
+        if (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable) && attempt < maxRetries-1 {
             resp.Body.Close()
             backoff := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
             jitter := time.Duration(rand.Int63n(int64(backoff) / 2))
             retryAfter := backoff + jitter
-            logger.GetSugaredLogger().Warnf("Got 429 for host:%s url:%s (attempt %d/%d), retrying after %v", e.host, baseUrl, attempt+1, maxRetries, retryAfter)
+            logger.GetSugaredLogger().Warnf("Got %d for host:%s url:%s (attempt %d/%d), retrying after %v", resp.StatusCode, e.host, baseUrl, attempt+1, maxRetries, retryAfter)
             time.Sleep(retryAfter)
             continue
         }
 
         // Close body and return error for non-OK
-        if resp.StatusCode == http.StatusTooManyRequests {
+        if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
             resp.Body.Close()
             return nil, fmt.Errorf("received non-200 status code: %d", resp.StatusCode)
         }

@@ -3,6 +3,7 @@ package parser
 import (
 	"context"
 	"fmt"
+	"github.com/lufeed/feed-parser-api/internal/browser"
 	"html"
 	"net/http"
 	"net/url"
@@ -36,7 +37,7 @@ type SourceHandler func(source models.Source)
 func (p *URLParser) Exec(sourceUrl string, sendHTML bool, onSource SourceHandler) (models.Source, error) {
 	fp := gofeed.NewParser()
 	cl, proxyID := p.proxyManager.GetProxiedClient()
-	fp.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
+	fp.UserAgent = browser.GetUserAgent()
 	fp.Client = cl
 
 	logger.GetSugaredLogger().Infof("Parsing url %s", sourceUrl)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/lufeed/feed-parser-api/internal/browser"
 	"math"
 	"math/rand"
 	"net/http"
@@ -51,7 +52,7 @@ func (s *SourceParser) Exec(sourceURL string, sendHTML bool, onItem FeedItemHand
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		fp := gofeed.NewParser()
-		fp.UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
+		fp.UserAgent = browser.GetUserAgent()
 		cl, proxyID := s.proxyManager.GetProxiedClient()
 		fp.Client = cl
 		feed, err = fp.ParseURL(sourceURL)

@@ -2,12 +2,15 @@ package opengraph
 
 import (
     "fmt"
+    "math"
+    "math/rand"
     "net/http"
     "net/url"
     "path"
     "regexp"
     "strconv"
     "strings"
+    "time"
 
     "github.com/lufeed/feed-parser-api/internal/logger"
     "go.uber.org/zap"
@@ -123,47 +126,73 @@ func (e *Extractor) getDoc() (*html.Node, error) {
 		return nil, fmt.Errorf("URL missing host: %s", baseUrl)
 	}
 
-	// Create a new request with headers
-	req, err := http.NewRequest("GET", baseUrl, nil)
-	if err != nil {
-		logger.GetSugaredLogger().Warnf("Error creating request for %s: %s", baseUrl, err.Error())
-		return nil, err
-	}
+    // Retry mechanism for fetching the URL (handles transient errors and 429)
+    const maxRetries = 3
+    for attempt := 0; attempt < maxRetries; attempt++ {
+        // Create a new request with headers per attempt
+        req, err := http.NewRequest("GET", baseUrl, nil)
+        if err != nil {
+            logger.GetSugaredLogger().Warnf("Error creating request for %s: %s", baseUrl, err.Error())
+            return nil, err
+        }
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+        req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0")
+        req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+        req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 
-	// Make the request
-	resp, err := e.cl.Do(req)
-	if err != nil {
-		logger.GetSugaredLogger().Warnf("Error fetching url from host:%s - url: %s - %s", e.host, baseUrl, err.Error())
-		return nil, err
-	}
-	defer resp.Body.Close()
+        resp, err := e.cl.Do(req)
+        if err != nil {
+            // Network/transport error: retry with backoff if attempts remain
+            if attempt < maxRetries-1 {
+                backoff := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
+                jitter := time.Duration(rand.Int63n(int64(backoff) / 2))
+                retryAfter := backoff + jitter
+                logger.GetSugaredLogger().Warnf("Fetch error for host:%s url:%s (attempt %d/%d), retrying after %v: %s", e.host, baseUrl, attempt+1, maxRetries, retryAfter, err.Error())
+                time.Sleep(retryAfter)
+                continue
+            }
+            logger.GetSugaredLogger().Warnf("Error fetching url from host:%s - url: %s - %s", e.host, baseUrl, err.Error())
+            return nil, err
+        }
 
-	// Check if we got a successful response
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusTooManyRequests {
-			return nil, fmt.Errorf("received non-200 status code: %d", resp.StatusCode)
-		}
-		logger.GetSugaredLogger().Debugf("Received non-200 status code (%d) for %s", resp.StatusCode, baseUrl)
-		return nil, fmt.Errorf("received non-200 status code: %d", resp.StatusCode)
-	}
+        if resp.StatusCode == http.StatusOK {
+            reader, err := charset.NewReader(resp.Body, resp.Header.Get("Content-Type"))
+            resp.Body.Close()
+            if err != nil {
+                logger.GetSugaredLogger().Warnf("Error creating charset reader: host:%s url: %s err: %s", e.host, baseUrl, err.Error())
+                return nil, err
+            }
+            doc, err := html.Parse(reader)
+            if err != nil {
+                logger.GetSugaredLogger().Warnf("Error parsing HTML: %s", err.Error())
+                return nil, err
+            }
+            return doc, nil
+        }
 
-	reader, err := charset.NewReader(resp.Body, resp.Header.Get("Content-Type"))
-	if err != nil {
-		logger.GetSugaredLogger().Warnf("Error creating charset reader: host:%s url: %s err: %s", e.host, baseUrl, err.Error())
-		return nil, err
-	}
+        // Not OK status
+        if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries-1 {
+            resp.Body.Close()
+            backoff := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
+            jitter := time.Duration(rand.Int63n(int64(backoff) / 2))
+            retryAfter := backoff + jitter
+            logger.GetSugaredLogger().Warnf("Got 429 for host:%s url:%s (attempt %d/%d), retrying after %v", e.host, baseUrl, attempt+1, maxRetries, retryAfter)
+            time.Sleep(retryAfter)
+            continue
+        }
 
-	doc, err := html.Parse(reader)
-	if err != nil {
-		logger.GetSugaredLogger().Warnf("Error parsing HTML: %s", err.Error())
-		return nil, err
-	}
+        // Close body and return error for non-OK
+        if resp.StatusCode == http.StatusTooManyRequests {
+            resp.Body.Close()
+            return nil, fmt.Errorf("received non-200 status code: %d", resp.StatusCode)
+        }
+        logger.GetSugaredLogger().Debugf("Received non-200 status code (%d) for %s", resp.StatusCode, baseUrl)
+        resp.Body.Close()
+        return nil, fmt.Errorf("received non-200 status code: %d", resp.StatusCode)
+    }
 
-	return doc, nil
+    // Exhausted retries
+    return nil, fmt.Errorf("failed to fetch URL after retries: %s", baseUrl)
 }
 
 func (e *Extractor) getDescription(doc *html.Node) string {

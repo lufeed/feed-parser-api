@@ -11,4 +11,6 @@ type Source struct {
 	ImageURL    string    `json:"image_url"`
 	IconURL     string    `json:"icon_url"`
 	HTML        *string   `json:"html,omitempty"`
+	UserID      string    `json:"user_id"`
+	RequestID   string    `json:"request_id"`
 }

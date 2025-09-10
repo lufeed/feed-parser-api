@@ -68,6 +68,7 @@ func listenSourceRequests(ctx context.Context, pm *proxy.Manager) {
 			item.UserID = req.UserID
 			b, _ := json.Marshal(item)
 			cache.Publish("parse_source_results", b)
+			logger.GetSugaredLogger().Infof("Published source %s", item.FeedName)
 		})
 		// Optionally publish a done message
 		// cache.Publish("parse_source_results:"+req.RequestID, []byte(`{"done":true}`))
@@ -88,6 +89,7 @@ func listenURLRequests(ctx context.Context, pm *proxy.Manager) {
 			source.RequestID = req.RequestID
 			b, _ := json.Marshal(source)
 			cache.Publish("parse_url_results", b)
+			logger.GetSugaredLogger().Infof("Published url %s", req.URL)
 		})
 		// Optionally publish a done message
 		// cache.Publish("parse_url_results:"+req.RequestID, []byte(`{"done":true}`))

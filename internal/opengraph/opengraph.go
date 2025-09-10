@@ -162,8 +162,8 @@ func (e *Extractor) getDoc() (*html.Node, error) {
 		}
 
 		if resp.StatusCode == http.StatusOK {
+			defer resp.Body.Close()
 			reader, err := charset.NewReader(resp.Body, resp.Header.Get("Content-Type"))
-			resp.Body.Close()
 			if err != nil {
 				logger.GetSugaredLogger().Warnf("Error creating charset reader: host:%s url: %s err: %s", e.host, baseUrl, err.Error())
 				return nil, err
